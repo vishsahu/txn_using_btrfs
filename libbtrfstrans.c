@@ -54,8 +54,8 @@ static int release_ro_sem();
 static int wait_rename_sem();
 static int release_rename_sem();
 
-static int test_issubvolume(const char *path);
-//static int test_isdir(const char *path);
+int test_issubvolume(const char *path);
+int test_isdir(const char *path);
 static int create_snapshot(char* subvol, char* dst, int readonly, int async);
 static int create_subvolume(const char* dst);
 static int delete_subvolume(const char* path);
@@ -447,6 +447,9 @@ static int release_rename_sem() {
     return SUCCESS;
 }
 
+/*
+  these functions redefined here from btrfs-progs. There is some linker error
+  and hence this ugly way out is done */
 
 /*
  * test if path is a subvolume:
@@ -455,7 +458,7 @@ static int release_rename_sem() {
  * 1-> path exists and it is a subvolume
  * -1 -> path is unaccessible
  */
-static int test_issubvolume(const char *path) {// from btrfs progs: cmds-subvolume.c
+int test_issubvolume(const char *path) {// from btrfs progs: cmds-subvolume.c
     struct stat st;
     int res;
 
@@ -474,16 +477,67 @@ static int test_issubvolume(const char *path) {// from btrfs progs: cmds-subvolu
  * 1-> path exists and it is a directory
  * -1 -> path is unaccessible
  */
-//static int test_isdir(const char *path) {// from btrfs progs: cmds-subvolume.c
-//    struct stat st;
-//    int res;
-//
-//    res = stat(path, &st);
-//    if(res < 0 )
-//        return -1;
-//
-//    return S_ISDIR(st.st_mode);
-//}
+int test_isdir(const char *path) {// from btrfs progs: cmds-subvolume.c
+    struct stat st;
+    int res;
+
+    res = stat(path, &st);
+    if(res < 0 )
+        return -1;
+
+    return S_ISDIR(st.st_mode);
+}
+
+int open_file_or_dir3(const char *fname, DIR **dirstream, int open_flags)
+{
+	int ret;
+	struct stat st;
+	int fd;
+
+	ret = stat(fname, &st);
+	if (ret < 0) {
+		return -1;
+	}
+	if (S_ISDIR(st.st_mode)) {
+		*dirstream = opendir(fname);
+		if (!*dirstream)
+			return -1;
+		fd = dirfd(*dirstream);
+	} else if (S_ISREG(st.st_mode) || S_ISLNK(st.st_mode)) {
+		fd = open(fname, open_flags);
+	} else {
+		/*
+		 * we set this on purpose, in case the caller output
+		 * strerror(errno) as success
+		 */
+		errno = EINVAL;
+		return -1;
+	}
+	if (fd < 0) {
+		fd = -1;
+		if (*dirstream) {
+			closedir(*dirstream);
+			*dirstream = NULL;
+		}
+	}
+	return fd;
+}
+
+
+int open_file_or_dir(const char *fname, DIR **dirstream)
+{
+	return open_file_or_dir3(fname, dirstream, O_RDWR);
+}
+
+#define strncpy_null(dest, src) __strncpy_null(dest, src, sizeof(dest))
+char *__strncpy_null(char *dest, const char *src, size_t n)
+{
+	strncpy(dest, src, n);
+	if (n > 0)
+		dest[n - 1] = '\0';
+	return dest;
+}
+
 
 
 

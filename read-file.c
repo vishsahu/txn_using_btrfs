@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <unistd.h>
-#include "../libbtrfstrans/libbtrfstrans.h"
+#include "libbtrfstrans.h"
 
 void read_file(const char* path);
 
