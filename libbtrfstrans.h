@@ -34,6 +34,14 @@ int abort_transaction();
 int start_ro_transaction();
 int stop_ro_transaction();
 
+int test_issubvolume(const char *path);
+int test_isdir(const char *path);
+
+int create_snapshot(const char* subvol, char* dst, int readonly, int async); // from btrfs progs: cmds-subvolume.c
+int make_subvolume(const char *path);
+int create_subvolume(const char* dst);
+int delete_subvolume(const char* path);
+
 FILE* btrfstrans_fopen(const char *__restrict __filename, const char *__restrict __modes);
 int btrfstrans_fclose(FILE* stream);
 int btrfstrans_mkdir(const char* path, __mode_t mode);

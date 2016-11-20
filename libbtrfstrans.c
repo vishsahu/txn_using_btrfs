@@ -36,7 +36,7 @@
 #define BTRFSTRANS_READONLY_SV_NAME "/ro_snaps/"
 
 #define LIBBTRFSTRANS_RO_SNAP_NAME_PREFIX "ro_snap_"
-#define BTRFSTRANS_MAX_NUM_RO_TRANS 2
+#define BTRFSTRANS_MAX_NUM_RO_TRANS 1
 #define MAX_PATH_LEN 256
 
 enum libbtrfstrans_state_enum {
@@ -54,11 +54,6 @@ static int release_ro_sem();
 static int wait_rename_sem();
 static int release_rename_sem();
 
-int test_issubvolume(const char *path);
-int test_isdir(const char *path);
-static int create_snapshot(char* subvol, char* dst, int readonly, int async);
-static int create_subvolume(const char* dst);
-static int delete_subvolume(const char* path);
 static int exists(const char* path);
 static int exists_one_of(const char* path1, const char* path2, const char* path3);
 static int exist_both_of(const char* path1, const char* path2);
@@ -83,43 +78,59 @@ static int state = STATE_UNINITIALIZED;
 // --------------------------------------------------------
 
 
-int init_libbtrfstrans(const char* path) { // code from cmd_subvol_get_default() from btrfs progs cmds-subvolume.c
+// code from cmd_subvol_get_default() from btrfs progs cmds-subvolume.c
+int init_libbtrfstrans(const char* path) {
     if ( state != STATE_UNINITIALIZED ) {
         fprintf(stderr, "ERROR: libbtrfstrans was already initialized\n");
         state = STATE_ERROR;
         return E_WRONGSTATE;
     }
 
-    signal(SIGABRT, signal_callback_handler);
-    signal(SIGFPE, signal_callback_handler);
-    signal(SIGILL, signal_callback_handler);
-    signal(SIGINT, signal_callback_handler);
-    signal(SIGSEGV, signal_callback_handler);
-    signal(SIGTERM, signal_callback_handler);
+    printf("Initializing library for %s...\n", path);
+    printf("Registering signal handlers...\n");
+    //signal(SIGABRT, signal_callback_handler);
+    //signal(SIGFPE, signal_callback_handler);
+    //signal(SIGILL, signal_callback_handler);
+    //signal(SIGINT, signal_callback_handler);
+    //signal(SIGSEGV, signal_callback_handler);
+    //signal(SIGTERM, signal_callback_handler);
+    printf("%d %d %d %d %d %d\n", SIGABRT, SIGFPE, SIGILL, SIGINT, SIGSEGV,
+    SIGTERM);
+    printf("Signal handlers registered...\n");
 
     create_path_vars(path);
 
-    if (!exists_one_of(head_subvolume_path, head_old_subvolume_path, readonly_subvolumes_path)) { //subvolume is empty
+    if (!exists_one_of(head_subvolume_path, head_old_subvolume_path,\
+        readonly_subvolumes_path)) { //subvolume is empty
         int ret = create_initial_subvolumes();
         if (ret){
             state = STATE_ERROR;
             return ret;
         }
+        printf("Any one of subvolume is existing, state is initialized\
+        now.\n");
         state = STATE_INITIALIZED;
         return SUCCESS;
     }
 
-    if (exist_both_of(readonly_subvolumes_path, head_subvolume_path) && !exists(head_old_subvolume_path)) {
+    if (exist_both_of(readonly_subvolumes_path, head_subvolume_path) &&
+        !exists(head_old_subvolume_path)) {
+        printf("Both head and ro_subvol exist, state is initialized\
+        now.\n");
         state = STATE_INITIALIZED;
         return SUCCESS;
     }
 
-    if (exist_both_of(readonly_subvolumes_path, head_old_subvolume_path) && !exists(head_subvolume_path)) {
+    if (exist_both_of(readonly_subvolumes_path, head_old_subvolume_path) &&
+        !exists(head_subvolume_path)) {
         if (rename(head_old_subvolume_path, head_subvolume_path)) {
-            fprintf(stderr, "ERROR: renaming %s to %s\n", head_old_subvolume_path, head_subvolume_path);
+            fprintf(stderr, "ERROR: renaming %s to %s\n",
+            head_old_subvolume_path, head_subvolume_path);
             state = STATE_ERROR;
             return E_RENAME;
         }
+        printf("Both head_old and ro_subvol exist, and head doesn't, renaming.\
+        state is initialized now.\n");
         state = STATE_INITIALIZED;
         return SUCCESS;
     }
@@ -204,7 +215,7 @@ int commit_transaction() {
     sync();
     //sleep(4); // for demonstration purposes only
 
-    //puts("libbtrfstrans: Going to rename 'wr_snap' to 'head'. Ok?");
+    //puts("libbtrfstra/dir1_svolns: Going to rename 'wr_snap' to 'head'. Ok?");
     //getchar();
 
     if (rename(writable_subvolume_path, head_subvolume_path)) {
@@ -232,7 +243,7 @@ int commit_transaction() {
 
     state = STATE_INITIALIZED;
 
-    //printf("libbtrfstrans: Finished committing transaction\n");
+    printf("libbtrfstrans: Finished committing transaction\n");
 
     return SUCCESS;
 }
@@ -258,18 +269,19 @@ int abort_transaction() {
     return SUCCESS;
 }
 
-int start_ro_transaction(){
-    int done=0;
+int start_ro_transaction() {
+    int done = 0;
     char nr_buf[10];
 
-    //printf("libbtrfstrans: Starting read-only transaction\n");
+    printf("libbtrfstrans: Starting read-only transaction\n");
 
     if (state != STATE_INITIALIZED) {
         fprintf(stderr, "ERROR: libbtrfstrans was not configured or is in the wrong state\n");
         return E_WRONGSTATE;
     }
 
-    wait_ro_sem();
+    //wait_ro_sem();
+    printf("Sema acquired\n");
 
     for (int i=0; i<BTRFSTRANS_MAX_NUM_RO_TRANS; i++) {
         strcpy(specific_readonly_sv_path, readonly_subvolumes_path);
@@ -278,10 +290,14 @@ int start_ro_transaction(){
         sprintf(nr_buf, "%d", i);
         strcat(specific_readonly_sv_path, nr_buf);
         strcat(specific_readonly_sv_path, "/");
+
+        printf("Creating snpshot of %s at %s\n", head_subvolume_path,
+            specific_readonly_sv_path);
         if (!exists(specific_readonly_sv_path)){
-            wait_rename_sem();
-            create_snapshot(head_subvolume_path, specific_readonly_sv_path, BTRFSTRANS_READONLY, BTRFSTRANS_ASYNCHR);
-            release_rename_sem();
+            //wait_rename_sem();
+            create_snapshot(head_subvolume_path, specific_readonly_sv_path,\
+            BTRFSTRANS_READONLY, BTRFSTRANS_ASYNCHR);
+            //release_rename_sem();
             done = 1;
             break;
         }
@@ -292,9 +308,10 @@ int start_ro_transaction(){
         return E_UNSPECIFIED;
     }
 
-    //printf("libbtrfstrans: Finished starting read-only transaction\n");
+    printf("libbtrfstrans: Finished starting read-only transaction\n");
 
     state = STATE_READ;
+    printf("State is %d.\n", state);
     return SUCCESS;
 }
 
@@ -304,7 +321,8 @@ int stop_ro_transaction() {
     int ret;
 
     if ( state != STATE_READ) {
-        fprintf(stderr, "ERROR: read-only transaction was not started or libbtrfstrans is in the wrong state\n");
+        fprintf(stderr, "ERROR: read-only transaction was not started or\
+            libbtrfstrans is in the wrong state\n");
         return E_WRONGSTATE;
     }
 
@@ -313,13 +331,14 @@ int stop_ro_transaction() {
 
     ret = delete_subvolume(specific_readonly_sv_path);
     if (ret) {
-        fprintf(stderr, "ERROR: couldn't delete subvolume %s to commit the transaction\n", head_old_subvolume_path);
+        fprintf(stderr, "ERROR: couldn't delete subvolume %s to commit the\
+            transaction\n", head_old_subvolume_path);
         state = STATE_ERROR;
         return ret;
     }
 
 
-    release_ro_sem();
+    //release_ro_sem();
 
     state = STATE_INITIALIZED;
     return SUCCESS;
@@ -366,12 +385,23 @@ static int release_write_lock(){
 }
 
 static int wait_ro_sem() {
-    sem_ro = sem_open(BTRFSTRANS_READONLY_SEM_NAME, O_CREAT, 0644, BTRFSTRANS_MAX_NUM_RO_TRANS); /* open or create semaphore */
+    printf("Sema opening, name: %s...\n", BTRFSTRANS_READONLY_SEM_NAME);
+
+    sem_t* (*sem_fnp)(const char *, int, mode_t, unsigned int);
+    sem_fnp = &sem_open;
+    if (!sem_fnp)
+        printf("Function pointer to sem_open() is %x\n.", sem_fnp);
+    else
+        printf("Function pointer to sem_open() is NULL.\n");
+
+    //sem_ro = sem_open(BTRFSTRANS_READONLY_SEM_NAME, O_CREAT, 0644, BTRFSTRANS_MAX_NUM_RO_TRANS); /* open or create semaphore */
     if (sem_ro == SEM_FAILED) {
+        printf("Sema failed!\n");
         fprintf(stderr, "ERROR in %s (sem_open()) = %d\n", __func__, errno);
         state = STATE_ERROR;
         return errno;
     }
+    printf("Sema opened!\n");
 
     int ret = sem_wait(sem_ro);
     if (ret != 0) {
@@ -539,9 +569,7 @@ char *__strncpy_null(char *dest, const char *src, size_t n)
 }
 
 
-
-
-static int create_snapshot(char* subvol, char* dst, int readonly, int async) // from btrfs progs: cmds-subvolume.c
+int create_snapshot(const char* subvol, char* dst, int readonly, int async) // from btrfs progs: cmds-subvolume.c
 {
     int res, retval;
     int fd = -1, fddst = -1;
@@ -627,6 +655,7 @@ static int create_snapshot(char* subvol, char* dst, int readonly, int async) // 
     args.fd = fd;
 
     strncpy_null(args.name, newname);
+    printf("Creating the snapshot\n");
 
     res = ioctl(fddst, BTRFS_IOC_SNAP_CREATE_V2, &args);
 
@@ -649,9 +678,7 @@ out:
 }
 
 
-
-
-static int create_subvolume(const char* dst) // from btrfs progs: cmds-subvolume.c
+int create_subvolume(const char* dst) // from btrfs progs: cmds-subvolume.c
 {
     int retval, res, len;
     int fddst = -1;
@@ -703,6 +730,7 @@ static int create_subvolume(const char* dst) // from btrfs progs: cmds-subvolume
 
     if (res < 0) {
         fprintf(stderr, "ERROR: cannot create subvolume - %s\n", strerror(errno));
+        printf("ERROR: cannot create subvolume - %s\n", strerror(errno));
         goto out;
     }
 
@@ -717,7 +745,7 @@ out:
 }
 
 
-static int delete_subvolume(const char* path) // from btrfs progs: cmds-subvolume.c
+int delete_subvolume(const char* path) // from btrfs progs: cmds-subvolume.c
 {
     int res, fd, len, e;
     struct btrfs_ioctl_vol_args args;
@@ -773,6 +801,107 @@ static int delete_subvolume(const char* path) // from btrfs progs: cmds-subvolum
     return SUCCESS;
 }
 
+
+/*
+ * Function to make a directory in btrfs volume a sub-volume
+ */
+int make_subvolume(const char* path) {
+    int ret = 0;
+    char svol_path[MAX_PATH_LEN];
+
+    ret = test_issubvolume(path);
+    if (ret == 1) {
+        return 0; // already a subvolume, no action needed
+    }
+    else if (ret < 0) {
+        printf("ERROR %s: path is inaccessable\n", __func__);
+        return -EINVAL;
+    }
+
+    ret = snprintf(svol_path, MAX_PATH_LEN, "%s_svol", path);
+    if (ret >= MAX_PATH_LEN) {
+        printf("ERROR %s: Path longer than buffer, allocate larger buffer.\n",
+            __func__);
+        return -ENOMEM;
+    }
+    else if (ret < 0) {
+        printf("ERROR %s: Error in writing string.\n", __func__);
+        return -ENOMEM;
+    }
+
+    //printf("%s\n", svol_path);
+
+    ret = create_subvolume(svol_path);
+    if (ret) {
+        printf("ERROR in %s: can't create subvolume '%s'\n", __func__,
+            svol_path);
+        return -EINVAL;
+    }
+
+    //
+    //  We execute following commands to make existing directory a subvolume:
+    //   cp -rf --reflink=always path/* svol_path/.
+    //   rm -rf path/
+    //   mv svol_path path
+    //
+
+    char cmd[MAX_PATH_LEN];
+    ret = snprintf(cmd, MAX_PATH_LEN, "cp -rf --reflink=always %s/* %s/.", path,
+        svol_path);
+    if (ret >= MAX_PATH_LEN) {
+        printf("ERROR %s: Path longer than buffer, allocate larger buffer.\n",
+            __func__);
+        return -ENOMEM;
+    }
+    else if (ret < 0) {
+        printf("ERROR %s: Error in writing string.\n", __func__);
+        return -ENOMEM;
+    }
+    //printf("%s\n", cmd);
+    ret = system(cmd);
+    if (ret < 0) {
+        printf("Error in executing command\n");
+        return ret;
+    }
+
+    ret = snprintf(cmd, MAX_PATH_LEN, "rm -rf %s/", path);
+    if (ret >= MAX_PATH_LEN) {
+        printf("ERROR %s: Path longer than buffer, allocate larger buffer.\n",
+            __func__);
+        return -ENOMEM;
+    }
+    else if (ret < 0) {
+        printf("ERROR %s: Error in writing string.\n", __func__);
+        return -ENOMEM;
+    }
+    //printf("%s\n", cmd);
+    ret = system(cmd);
+    if (ret < 0) {
+        printf("Error in executing command\n");
+        return ret;
+    }
+
+    ret = snprintf(cmd, MAX_PATH_LEN, "mv %s %s", svol_path, path);
+    if (ret >= MAX_PATH_LEN) {
+        printf("ERROR %s: Path longer than buffer, allocate larger buffer.\n",
+            __func__);
+        return -ENOMEM;
+    }
+    else if (ret < 0) {
+        printf("ERROR %s: Error in writing string.\n", __func__);
+        return -ENOMEM;
+    }
+    //printf("%s\n", cmd);
+    ret = system(cmd);
+    if (ret < 0) {
+        printf("Error in executing command\n");
+        return ret;
+    }
+
+    return ret;
+}
+
+
 static int exists(const char* path) {
     int ret;
     struct stat st;
@@ -795,6 +924,7 @@ static int exist_both_of(const char* path1, const char* path2) {
 static int assemble_path(const char* filename, char* assembled_path) {
     if (!strcmp(filename, ".") || !strcmp(filename, "..") || !strcmp(filename, "/")) {
         fprintf(stderr, "ERROR: Invalid filename '%s'\n", filename);
+        printf("invalid file name\n");
 
         return E_INVALIDNAME;
     }
@@ -802,12 +932,15 @@ static int assemble_path(const char* filename, char* assembled_path) {
     if (state == STATE_READ) {
         strcpy(assembled_path, specific_readonly_sv_path);
         strcat(assembled_path, filename);
+        printf("path to read is %s\n", assembled_path);
         return SUCCESS;
     } else if ( state == STATE_WRITE) {
         strcpy(assembled_path, writable_subvolume_path);
         strcat(assembled_path, filename);
+        printf("path to write is %s\n", assembled_path);
         return SUCCESS;
     } else {
+        printf("Wrong state\n");
         return E_WRONGSTATE;
     }
 }
@@ -876,8 +1009,10 @@ int btrfstrans_stat(const char* __restrict file, struct stat* __restrict buf) {
 static void signal_callback_handler(int signum) {
     printf("\nlibbtrfstrans: Caught signal: %d\n", signum);
     if (state == STATE_READ) {
+        printf("stopping ro transaction...\n");
         stop_ro_transaction();
     } else if (state == STATE_WRITE) {
+        printf("aborting write transaction...\n");
         abort_transaction();
     }
 
