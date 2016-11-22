@@ -9,6 +9,7 @@
 #define MAX_PATH_LEN 500
 
 void read_file(const char* path);
+void write_file(const char* path);
 
 int main(int argc, char *argv[]) {
 
@@ -42,7 +43,7 @@ int main(int argc, char *argv[]) {
 
     printf("Snapshot created, do some work here\n");
 
-    ////ret = write_file("/mnt/btrfs/orig_snap/foo");
+    write_file("/mnt/btrfs/orig_snap/test_file");
 
     ret = snprintf(temp_name, MAX_PATH_LEN, "%s_temp", top_dir);
     if (ret >= MAX_PATH_LEN) {
@@ -82,22 +83,33 @@ int main(int argc, char *argv[]) {
 }
 
 
+void write_file(const char *path) {
+    FILE *fp;
+    const char *text = "this is random text.";
+    fp = fopen(path, "w+");
+    if (!fp) {
+        printf("path could not be opened\n");
+        return;
+    }
+    fputs(text, fp);
+    fclose(fp);
+}
 
-//
-//void read_file(const char* path){
-//    FILE* fp;
-//    fp = btrfstrans_fopen(path, "rt");
-//    char line[81];
-//    if (fp == NULL) {
-//        fprintf(stderr, "ERROR: couldn't open file named '%s' for reading it\n", path);
-//    }
-//
-//    printf("Content of file named '%s' is:\n-----\n", path);
-//    while (fgets(line, 80, fp) != NULL) {
-//        printf("%s\n", line);
-//    }
-//    printf("-----\n");
-//
-//    fclose(fp);
-//}
+
+void read_file(const char* path){
+    FILE* fp;
+    fp = fopen(path, "rt");
+    char line[81];
+    if (fp == NULL) {
+        fprintf(stderr, "ERROR: couldn't open file named '%s' for reading it\n", path);
+    }
+
+    printf("Content of file named '%s' is:\n-----\n", path);
+    while (fgets(line, 80, fp) != NULL) {
+        printf("%s\n", line);
+    }
+    printf("-----\n");
+
+    fclose(fp);
+}
 
